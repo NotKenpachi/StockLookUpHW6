@@ -1,5 +1,8 @@
-# gets the stock data
-# made a base class so i can add other apis later
+"""Quote data sources.
+
+QuoteProvider is an interface so another API (Alpha Vantage, Finnhub, ...)
+can be added later without touching the CLI.
+"""
 
 from abc import ABC, abstractmethod
 
@@ -11,15 +14,18 @@ from .models import Quote
 class QuoteProvider(ABC):
     @abstractmethod
     def get_quote(self, symbol: str) -> Quote:
-        pass  # should return a Quote
+        """Return a Quote for the symbol or raise a QuoteError."""
 
 
-# uses yfinance to get data from yahoo
 class YahooFinanceProvider(QuoteProvider):
     HOST = "query1.finance.yahoo.com"
 
     def __init__(self):
-        import yfinance  # import here so tests work without yfinance
+        import logging
+        import yfinance  # imported here so tests can run without it
+        # yfinance logs its own "HTTP Error 404 / possibly delisted" lines;
+        # hide them so the user only sees this program's error message.
+        logging.getLogger("yfinance").setLevel(logging.CRITICAL)
         self._yf = yfinance
 
     def get_quote(self, symbol: str) -> Quote:
@@ -30,7 +36,6 @@ class YahooFinanceProvider(QuoteProvider):
         price = info.get("regularMarketPrice") or info.get("currentPrice")
         prev = info.get("regularMarketPreviousClose") or info.get("previousClose")
 
-        # if info is missing the price, use history instead
         if price is None or prev is None:
             price, prev = self._from_history(ticker, symbol)
 
@@ -49,7 +54,7 @@ class YahooFinanceProvider(QuoteProvider):
                 ) from None
             if "404" in text or "not found" in text:
                 raise SymbolNotFoundError(f"No stock found for '{symbol}'.") from None
-            return {}  # try history instead
+            return {}  # fall back to price history
 
     @staticmethod
     def _from_history(ticker, symbol: str) -> tuple[float, float]:
